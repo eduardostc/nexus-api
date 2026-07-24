@@ -1,89 +1,128 @@
+# ==============================================================================
+# PIPELINE DE CI/CD - PLATAFORMA NEXUS API
+# Conceito aplicado: "Fail Fast" com encadeamento de dependências via 'needs'
+# ==============================================================================
+
+# Nome que aparecerá na aba "Actions" do repositório no GitHub
 name: CI Nexus API Pipeline
 
+# ------------------------------------------------------------------------------
+# GATILHOS DE EXECUÇÃO (Triggers)
+# Define quando a automação deve ser disparada
+# ------------------------------------------------------------------------------
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]          # Dispara ao fazer 'git push' na branch main
   pull_request:
-    branches: [ main ]
+    branches: [ main ]          # Dispara ao abrir/atualizar um PR para a main
 
+# ------------------------------------------------------------------------------
+# JOBS (Trabalhos/Etapas de execução)
+# Cada job roda em um container/máquina virtual isolado no GitHub
+# ------------------------------------------------------------------------------
 jobs:
-  # --- FASE 1 ---
+
+  # ============================================================================
+  # FASE 1: VALIDAÇÕES ESTRUTURAIS E DE SEGURANÇA (Roda em paralelo)
+  # ============================================================================
+
+  # Job 1: Análise Estática de Segurança (SAST)
   sast:
     name: Security Analysis (SAST)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest       # Aloca uma maquina virtual Ubuntu limpa na nuvem
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Run Security Scan
-        run: echo "Análise estática de segurança concluída sem falhas."
+        uses: actions/checkout@v4 # Baixa o código do seu repositório para a máquina virtual
 
+      - name: Run Security Scan
+        run: echo "Análise estática de segurança concluída sem falhas." # Simulação do scanner de segurança
+
+  # Job 2: Validação de Build e Compilação
   build:
     name: Build Application
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Baixa o código do repositório
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Install Dependencies
-        run: npm ci
-      - name: Build Project
-        run: echo "Build estrutural executado com sucesso."
+          node-version: '20'     # Configura o ambiente Node.js na versão 20
 
-  # --- FASE 2 (Fail Fast: Requer Fase 1) ---
+      - name: Install Dependencies
+        run: npm ci              # 'npm ci' faz uma instalação limpa e rápida para ambientes CI/CD
+
+      - name: Build Project
+        run: echo "Build estrutural executado com sucesso." # Valida se o projeto compila sem erros
+
+  # ============================================================================
+  # FASE 2: QUALIDADE E TESTES UNITÁRIOS (Aplica a Regra Fail Fast)
+  # ============================================================================
+
+  # Job 3: Testes Unitários de Código
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: [sast, build]
+    needs: [sast, build]         # FAIL FAST: Só roda se FASE 1 (sast e build) passar 100%
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install Dependencies
         run: npm ci
-      - name: Run Unit Tests
-        run: npm test --if-present
 
+      - name: Run Unit Tests
+        run: npm test --if-present  # Executa o script de testes unitários do package.json (se existir)
+
+  # Job 4: Análise de Qualidade de Código (Linter)
   lint-quality:
     name: Code Quality (Lint)
     runs-on: ubuntu-latest
-    needs: [sast, build]
+    needs: [sast, build]         # FAIL FAST: Só roda se FASE 1 (sast e build) passar 100%
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install Dependencies
         run: npm ci
-      - name: Run Linter
-        run: echo "Verificação de qualidade do código concluída."
 
-  # --- FASE 3 (Fail Fast: Requer Fase 2) ---
+      - name: Run Linter
+        run: echo "Verificação de qualidade do código concluída." # Valida formatação e padrões de código
+
+  # ============================================================================
+  # FASE 3: TESTES FIM-A-FIM / END-TO-END (Aplica a Regra Fail Fast Máxima)
+  # ============================================================================
+
+  # Job 5: Testes de API na Prática (Smoke, Sanity e Regression)
   api-tests:
     name: API E2E Tests (Curl)
     runs-on: ubuntu-latest
-    needs: [test, lint-quality]
+    needs: [test, lint-quality]  # FAIL FAST: Só roda se a FASE 2 inteira passar sem nenhum erro
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Baixa os arquivos do projeto (incluindo a pasta scripts/)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20'     # Prepara o Node.js v20 no ambiente do GitHub
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci              # Instala as bibliotecas que a API necessita para funcionar
 
       - name: Start API
-        run: npm start &
+        run: npm start &         # O '&' roda o servidor em SEGUNDO PLANO (sem travar a pipeline)
 
       - name: Run API Tests (Smoke, Sanity, Regression)
-        run: bash scripts/api-tests.sh
+        run: bash scripts/api-tests.sh # Executa o script bash que faz as chamadas via 'curl' nas rotas da API
